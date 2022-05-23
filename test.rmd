@@ -1,35 +1,50 @@
 ---
-title: "test"
+title: "Untitled"
 author: "Clara Peiret-García"
 date: "23/05/2022"
-output: ioslides_presentation
+output:
+  revealjs::revealjs_presentation:
+    theme: white
+    transition: none
+    reveal_options:
+      slideNumber: true
+      controls: true
+      rtl: "linear"
+      
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+# How to make a PB&J sandwich
 
-This is an R Markdown presentation. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document.
+## Bread
 
-## Slide with Bullets
+I prefer whole wheat bread
 
-- Bullet 1
-- Bullet 2
-- Bullet 3
+::: {style="color: blue;"}
 
-## Slide with R Output
+> * Yes, and it fades in 
+> * and the bullets are incrimental
+> * becuase I used the carrot sumbol
+> * and the color is blue
+> * because I specified it and used ::: symbols
 
-```{r cars, echo = TRUE}
-summary(cars)
-```
+:::
 
-## Slide with Plot
 
-```{r pressure}
-plot(pressure)
-```
+## Peanut butter 
 
+Creamy pb for sure 
+
+
+
+## Jelly 
+
+Nothing compares to my grandma's home made peach jam
+
+<section style="text-align: right;">
+Left-align: This works to align text right on this slide only.
+</section>
