@@ -1,3 +1,5 @@
+setwd('C:/Users/b9066009/Documents/PhD/01_access_morphometrics/ERSA2022_demo')
+
 options(java.parameters = "-Xmx2G")
 
 # load libraries
@@ -9,14 +11,10 @@ library(dplyr)
 library(tidyverse)
 library(rgdal)
 
-# load/get data
-sa_buf = st_read_parquet('./data/sa_buf.parquet') # study area boundaries
+# load data
 centroids = st_read_parquet('./data/centroids.parquet') # our origins and destinations
-#caen = oe_get('Caen, France', boundary = sa_buf, download_directory = './data/pbf')
 
-
-# data pre-processing
-
+# clean data
 centroids = st_transform(centroids, crs = 4326)
 centroids = centroids %>% rename(id = X__index_level_0__)
 centroids <- centroids %>%
@@ -24,71 +22,49 @@ centroids <- centroids %>%
          lat = unlist(map(centroids$geometry,2)))
 centroids = st_set_geometry(centroids,NULL)
 
-
 # r5r setup
-r5r_core <- setup_r5('./data/pbf')
+r5r_core = setup_r5('./data/pbf', elevation = 'TOBLER', overwrite = T)
 
-# accessibility analysis
-
-# set inputs
-mode <- c("WALK")
-max_walk_dist <- 800
-max_trip_duration <- 10
+# set up parametres
 departure_datetime <- as.POSIXct("13-05-2019 14:00:00",
                                  format = "%d-%m-%Y %H:%M:%S")
 
-# calculate a travel time matrix
+# routing analysis
+
 ttm <- travel_time_matrix(r5r_core = r5r_core,
                           origins = centroids,
                           destinations = centroids,
-                          mode = mode,
+                          mode = 'WALK',
                           departure_datetime = departure_datetime,
-                          max_walk_dist = max_walk_dist,
-                          max_trip_duration = max_trip_duration,
-                          verbose = FALSE)
+                          max_walk_dist = 2000,
+                          max_trip_duration = 15,
+                          verbose = FALSE,
+                          walk_speed = 4.5
+                          )
+access_score_adults = as.data.frame(table(ttm$from_id))
 
-head(ttm)
 
-# accessibility score based on how many points can be accessed within 20 min
-access_score_seniors = as.data.frame(table(ttm$from_id))
+ttm_seniors <- travel_time_matrix(r5r_core = r5r_core,
+                          origins = centroids,
+                          destinations = centroids,
+                          mode = 'WALK',
+                          departure_datetime = departure_datetime,
+                          max_walk_dist = 2000,
+                          max_trip_duration = 15,
+                          verbose = FALSE,
+                          walk_speed = 3.2
+)
+access_score_seniors = as.data.frame(table(ttm_seniors$from_id))
+
 
 # merge access score with polygons layer
 hexagons = st_read_parquet('./data/hexagons.parquet') # load polygons layer
+
+hexagons = merge(hexagons, access_score_adults, by.x = 'hex_id', by.y = 'Var1') # merge
+hexagons = hexagons %>% rename('access_adults' = 'Freq') # rename variable
+
 hexagons = merge(hexagons, access_score_seniors, by.x = 'hex_id', by.y = 'Var1') # merge
 hexagons = hexagons %>% rename('access_seniors' = 'Freq') # rename variable
+
+
 st_write_parquet(hexagons, './results/hexagons_access.parquet') # save to parquet
-
-# detailed itineraries
-dit <- detailed_itineraries(r5r_core = r5r_core,
-                            origins = centroids[27,],
-                            destinations = centroids[25,],
-                            mode = 'WALK',
-                            departure_datetime = departure_datetime,
-                            max_walk_dist = 10000,
-                            shortest_path = FALSE,
-                            verbose = FALSE)
-head(dit)
-
-# extract OSM network
-street_net <- street_network_to_sf(r5r_core)
-
-# plot
-ggplot() +
-  geom_sf(data = street_net$edges, color='gray85') +
-  geom_sf(data = dit, aes(color=mode)) +
-  facet_wrap(.~option) + 
-  theme_void()
-
-
-
-
-
-
-
-
-
-
-
-stop_r5(r5r_core)
-rJava::.jgc(R.gc = TRUE)
-
