@@ -1,3 +1,5 @@
+options(java.parameters = "-Xmx2G")
+
 # load libraries
 library(osmextract)
 library(sfarrow)
@@ -24,15 +26,14 @@ centroids = st_set_geometry(centroids,NULL)
 
 
 # r5r setup
-options(java.parameters = "-Xmx2G")
 r5r_core <- setup_r5('./data/pbf')
 
 # accessibility analysis
 
 # set inputs
 mode <- c("WALK")
-max_walk_dist <- 1000
-max_trip_duration <- 20
+max_walk_dist <- 1125
+max_trip_duration <- 15
 departure_datetime <- as.POSIXct("13-05-2019 14:00:00",
                                  format = "%d-%m-%Y %H:%M:%S")
 
@@ -54,7 +55,8 @@ access_score = as.data.frame(table(ttm$from_id))
 # merge access score with polygons layer
 hexagons = st_read_parquet('./data/hexagons.parquet') # load polygons layer
 hexagons = merge(hexagons, access_score, by.x = 'hex_id', by.y = 'Var1') # merge
-#st_write_parquet(hexagons, './results/hexagons_access.parquet') # save to parquet
+hexagons = hexagons %>% rename('access_adults' = 'Freq') # rename variable
+st_write_parquet(hexagons, './results/hexagons_access.parquet') # save to parquet
 
 
 stop_r5(r5r_core)
