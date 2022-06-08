@@ -1,6 +1,5 @@
-setwd('C:/Users/b9066009/Documents/PhD/01_access_morphometrics/ERSA2022_demo')
 
-options(java.parameters = "-Xmx2G")
+options(java.parameters = "-Xmx8G") # set up memory
 
 # load libraries
 library(osmextract)
@@ -12,18 +11,33 @@ library(tidyverse)
 library(rgdal)
 
 # load data
-centroids = st_read_parquet('./data/centroids.parquet') # our origins and destinations
+origins = st_read_parquet('./data/centroids.parquet') # load origins
+destinations = st_read_parquet('./data/amenities.parquet') # load destinations
 
 # clean data
-centroids = st_transform(centroids, crs = 4326)
-centroids = centroids %>% rename(id = X__index_level_0__)
-centroids <- centroids %>%
-  mutate(lon = unlist(map(centroids$geometry,1)),
-         lat = unlist(map(centroids$geometry,2)))
-centroids = st_set_geometry(centroids,NULL)
+origins = st_transform(origins, crs = 4326)
+origins = origins %>% rename(id = X__index_level_0__)
+origins <- origins %>%
+  mutate(lon = unlist(map(origins$geometry,1)),
+         lat = unlist(map(origins$geometry,2)))
+origins = st_set_geometry(origins,NULL)
+
+destinations = st_transform(destinations, crs = 4326)
+destinations = destinations %>% rename(id = index)
+destinations <- destinations %>%
+  mutate(lon = unlist(map(destinations$geometry,1)),
+         lat = unlist(map(destinations$geometry,2)))
+destinations = st_set_geometry(destinations,NULL)
+destinations$id = as.character(destinations$id)
+
+amenities_names = c('bank','school','post_box','cafe','pharmacy','atm','kindergarten','doctors','marketplace','driving_school',
+ 'dentist', 'college','community_centre','place_of_worship','library','theatre','university','cinema','arts_centre','language_school',
+ 'hospital','exhibition_centre','clinic','childcare') # select amenities
+
+destinations = destinations %>% dplyr::filter(amenity %in% amenities_names) # filter by selection
 
 # r5r setup
-r5r_core = setup_r5('./data/pbf', elevation = 'TOBLER', overwrite = T)
+r5r_core = setup_r5('./data/pbf', elevation = 'TOBLER', overwrite = F)
 
 # set up parametres
 departure_datetime <- as.POSIXct("13-05-2019 14:00:00",
@@ -32,8 +46,8 @@ departure_datetime <- as.POSIXct("13-05-2019 14:00:00",
 # routing analysis
 
 ttm <- travel_time_matrix(r5r_core = r5r_core,
-                          origins = centroids,
-                          destinations = centroids,
+                          origins = origins,
+                          destinations = destinations,
                           mode = 'WALK',
                           departure_datetime = departure_datetime,
                           max_walk_dist = 2000,
@@ -41,12 +55,13 @@ ttm <- travel_time_matrix(r5r_core = r5r_core,
                           verbose = FALSE,
                           walk_speed = 4.5
                           )
-access_score_adults = as.data.frame(table(ttm$from_id))
+
+
 
 
 ttm_seniors <- travel_time_matrix(r5r_core = r5r_core,
-                          origins = centroids,
-                          destinations = centroids,
+                          origins = origins,
+                          destinations = destinations,
                           mode = 'WALK',
                           departure_datetime = departure_datetime,
                           max_walk_dist = 2000,
@@ -54,8 +69,25 @@ ttm_seniors <- travel_time_matrix(r5r_core = r5r_core,
                           verbose = FALSE,
                           walk_speed = 3.2
 )
-access_score_seniors = as.data.frame(table(ttm_seniors$from_id))
 
+# add amenity label
+ttm = merge(ttm, destinations[,c('id','amenity')], by.x = 'to_id', by.y = 'id')
+ttm_seniors = merge(ttm_seniors, destinations[,c('id','amenity')], by.x = 'to_id', by.y = 'id')
+
+# accessibility score
+i_1_adults = ttm %>% count(from_id) # number of amenities accessible from each origin
+i_1_adults$i_1 = (i_1_adults$n - min(i_1_adults$n)) / (max(i_1_adults$n) - min(i_1_adults$n))
+
+i_2_adults = ttm %>% count(from_id, amenity, sort = T) %>% distinct(from_id, amenity) %>% group_by(from_id) %>% summarise("variety" = n()) # variety of amenities
+i_2_adults$i_2 = (i_2_adults$variety  - min(i_2_adults$variety)) / (max(i_2_adults$variety) - min(i_2_adults$variety))
+
+i_3_adults = ttm %>% group_by(from_id) %>% summarise_at(vars(travel_time_p50), list(name = mean)) # average distance to amenity
+i_3_adults$i_3 = (i_3_adults$name  - min(i_3_adults$name)) / (max(i_3_adults$name) - min(i_3_adults$name))
+
+access_score_adults = merge(i_1_adults[,c('from_id','i_1')], i_2_adults[,c('from_id','i_2')], by.x = 'from_id', by.y = 'from_id')
+access_score_adults = merge(access_score_adults, i_3_adults[,c('from_id','i_3')])
+
+access_score_adults$i = sqrt(access_score_adults$i_1 * access_score_adults$i_2 / (access_score_adults$i_3 + 0.01))
 
 # merge access score with polygons layer
 hexagons = st_read_parquet('./data/hexagons.parquet') # load polygons layer
@@ -67,4 +99,7 @@ hexagons = merge(hexagons, access_score_seniors, by.x = 'hex_id', by.y = 'Var1')
 hexagons = hexagons %>% rename('access_seniors' = 'Freq') # rename variable
 
 
-st_write_parquet(hexagons, './results/hexagons_access.parquet') # save to parquet
+#st_write_parquet(hexagons, './results/hexagons_access.parquet') # save to parquet
+
+stop_r5(r5r_core)
+rJava::.jgc(R.gc = TRUE)
